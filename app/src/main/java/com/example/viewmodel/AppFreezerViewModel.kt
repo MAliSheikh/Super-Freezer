@@ -177,7 +177,9 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun refreshInstalledApps() {
-        _isLoadingApps.value = true
+        if (_installedApps.value.isEmpty()) {
+            _isLoadingApps.value = true
+        }
         viewModelScope.launch {
             val apps = getInstalledAppsFromSystem()
             _installedApps.value = apps
@@ -255,7 +257,7 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
                 )
             )
         }
-        list
+        list.distinctBy { it.packageName }
     }
 
     fun toggleFreeze(appInfo: InstalledAppInfo) {
@@ -451,6 +453,11 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
             }
             
             if (packagesToFreeze.isNotEmpty()) {
+                // Additionally freeze itself app at the very end
+                val myPkg = getApplication<Application>().packageName
+                packagesToFreeze.add(myPkg)
+                appNamesToFreeze.add("Subzero")
+
                 if (FreezerAutomationService.isRunning) {
                     val intent = Intent(getApplication(), FreezerAutomationService::class.java).apply {
                         action = FreezerAutomationService.ACTION_FORCE_STOP_BATCH
@@ -486,6 +493,16 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
                 refreshInstalledApps()
+            } else {
+                // All apps are already frozen! Show toast and status notification
+                com.example.service.NotificationHelper.showAlreadyFrozenNotification(getApplication())
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(
+                        getApplication(),
+                        "Apps are already frozen!",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
     }

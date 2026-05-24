@@ -57,6 +57,7 @@ class FreezerWidgetProvider : AppWidgetProvider() {
             Log.d("FreezerWidget", "Quick freeze clicked from Home screen Widget")
             Toast.makeText(context, "❄️ Initializing Winterization Sequence...", Toast.LENGTH_SHORT).show()
 
+            val pendingResult = goAsync()
             // Query database in background thread
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -117,8 +118,12 @@ class FreezerWidgetProvider : AppWidgetProvider() {
                         val isWhitelisted = dbState?.isWhitelisted ?: false
                         val isBlacklisted = dbState?.isBlacklisted ?: false
 
+                        val autoFreezeDaysStr = repository.getSetting("autoFreezeDays", "7")
+                        val days = autoFreezeDaysStr.toIntOrNull() ?: 7
+                        val thresholdMs = days * 24L * 60L * 60L * 1000L
+
                         val lastUsed = usageMap[info.packageName] ?: (dbState?.lastUsedTime ?: 0L)
-                        val isInactive = (currentTime - lastUsed) > (3 * 60 * 1000L) // 3 minutes idle threshold
+                        val isInactive = (currentTime - lastUsed) > thresholdMs
 
                         // 3 Options Logic
                         val shouldFreeze = if (isBlacklisted && !isWhitelisted) {
@@ -144,12 +149,17 @@ class FreezerWidgetProvider : AppWidgetProvider() {
                     }
 
                     if (packagesToFreeze.isNotEmpty()) {
+                        // ALSO freeze itself app: append context.packageName to the end of the batch!
+                        packagesToFreeze.add(context.packageName)
+                        appNamesToFreeze.add("Subzero")
+
                         if (FreezerAutomationService.isRunning) {
                             // Forward batch to accessibility service
                             val serviceIntent = Intent(context, FreezerAutomationService::class.java).apply {
                                 action = FreezerAutomationService.ACTION_FORCE_STOP_BATCH
                                 putStringArrayListExtra(FreezerAutomationService.EXTRA_PACKAGE_LIST, packagesToFreeze)
                                 putStringArrayListExtra(FreezerAutomationService.EXTRA_APP_NAMES, appNamesToFreeze)
+                                putExtra("EXTRA_TRIGGER_SOURCE", "WIDGET")
                             }
                             context.startService(serviceIntent)
                         } else {
@@ -169,6 +179,8 @@ class FreezerWidgetProvider : AppWidgetProvider() {
                     }
                 } catch (e: Exception) {
                     Log.e("FreezerWidget", "Error during widget quick freeze", e)
+                } finally {
+                    pendingResult.finish()
                 }
             }
         }

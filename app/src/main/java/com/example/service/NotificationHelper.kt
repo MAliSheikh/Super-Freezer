@@ -38,4 +38,32 @@ object NotificationHelper {
             // safe fallback for notification permissions or background restrictions
         }
     }
+
+    fun showAlreadyFrozenNotification(context: Context) {
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Notifies when background apps are successfully frozen."
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.star_on)
+                .setContentTitle("❄️ Subzero: Already Frozen")
+                .setContentText("All selected apps are already dormant & frozen.")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+
+            notificationManager.notify(9999, builder.build())
+        } catch (e: Exception) {
+            // safe fallback
+        }
+    }
 }

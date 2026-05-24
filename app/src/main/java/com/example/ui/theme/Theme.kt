@@ -13,28 +13,28 @@ import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme =
   darkColorScheme(
-    primary = Color(0xFF8DBF9E),      // Peaceful light sage green
-    secondary = Color(0xFFC68B45),    // Warm honey goldenrod
-    tertiary = AlertWarningGold,
-    background = DeepEspresso,        // Warm charcoal background
-    surface = Color(0xFF1B221D),      // Gentle soft dark green-gray surface
-    onPrimary = DeepEspresso,
+    primary = Color(0xFF81D2D2),      // Frosted cool aqua mint (Zero blue-glare primary)
+    secondary = Color(0xFF5BA2A4),    // Quiet polar forest mint-teal
+    tertiary = AlertIcyCyan,
+    background = NordicIceDark,        // Deep frosted dark-slate background
+    surface = Color(0xFF151F22),      // Cozy cool dark forest card surface
+    onPrimary = NordicIceDark,
     onSecondary = SolidWhiteBg,
-    onBackground = Color(0xFFE4EDE6), // Soft off-white to eliminate high-contrast glare
-    onSurface = Color(0xFFE4EDE6)
+    onBackground = Color(0xFFDFECEE), // Soft low-glare frosted silver text
+    onSurface = Color(0xFFDFECEE)
   )
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = TerracottaPrimary,      // Serene herbal green
-    secondary = Color(0xFFC68B45),    // Warm honey goldenrod
-    tertiary = AlertWarningGold,
-    background = WarmLinenBg,         // Ultra-soft pale linen green background
-    surface = SolidWhiteBg,
+    primary = GlacialAquaPrimary,     // Deep comforting forest-teal
+    secondary = SoftMintContainer,    // Peaceful silver-mint secondary
+    tertiary = AlertIcyCyan,
+    background = CoolGlacialBg,       // Soft glacial ice cream background (eliminates white glare)
+    surface = SolidWhiteBg,           // Pure snow-white card background
     onPrimary = SolidWhiteBg,
-    onSecondary = DeepEspresso,
-    onBackground = DeepEspresso,
-    onSurface = DeepEspresso
+    onSecondary = NordicIceDark,
+    onBackground = Color(0xFF162528), // Sleep-friendly deep graphite slate text
+    onSurface = Color(0xFF162528)
   )
 
 @Composable

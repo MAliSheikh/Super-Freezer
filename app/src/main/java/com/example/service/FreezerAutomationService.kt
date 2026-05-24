@@ -115,9 +115,7 @@ class FreezerAutomationService : AccessibilityService() {
             Log.d("FreezerService", "Batch force stop finished!")
 
             // Return to source
-            if (triggerSource != "BACKGROUND") {
-                scheduleReturnToSource(1000)
-            }
+            scheduleReturnToSource(1000)
         }
     }
 
@@ -164,6 +162,13 @@ class FreezerAutomationService : AccessibilityService() {
             } catch (e: Exception) {
                 Log.e("FreezerService", "Error returning to app", e)
             }
+        } else if (triggerSource == "BACKGROUND") {
+            try {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                Log.d("FreezerService", "Returned back by simulating BACK key")
+            } catch (e: Exception) {
+                Log.e("FreezerService", "Error performing BACK action", e)
+            }
         }
     }
 
@@ -185,6 +190,10 @@ class FreezerAutomationService : AccessibilityService() {
             // Close detection check for "Always Freeze" apps
             val lastPkg = lastForegroundPackage
             if (lastPkg != null && lastPkg != newPackage && lastPkg != packageName && lastPkg != "com.android.settings" && !isLauncherPackage(lastPkg)) {
+                
+                // Clear immediately to prevent multiple triggers or endless loops!
+                lastForegroundPackage = null
+                
                 serviceScope.launch {
                     val state = repository.getAppState(lastPkg)
                     if (state != null && state.isBlacklisted && !state.isWhitelisted) {
@@ -364,9 +373,7 @@ class FreezerAutomationService : AccessibilityService() {
             if (isProcessingBatch) {
                 scheduleNextBatchTransition(600)
             } else {
-                if (triggerSource != "BACKGROUND") {
-                    scheduleReturnToSource(600)
-                }
+                scheduleReturnToSource(600)
             }
             return
         }
@@ -425,9 +432,7 @@ class FreezerAutomationService : AccessibilityService() {
                 if (isProcessingBatch && viewId == "android:id/button1") {
                     scheduleNextBatchTransition(500)
                 } else if (!isProcessingBatch && viewId == "android:id/button1") {
-                    if (triggerSource != "BACKGROUND") {
-                        scheduleReturnToSource(600)
-                    }
+                    scheduleReturnToSource(600)
                 }
                 return true
             }
@@ -444,9 +449,7 @@ class FreezerAutomationService : AccessibilityService() {
                 } else if (isProcessingBatch && (text.equals("Force stop", true) || text.equals("Force Stop", true))) {
                     scheduleNextBatchTransition(1200) // safety fallback transition
                 } else if (!isProcessingBatch && (text.equals("OK", true) || text.equals("Ok", true) || text.equals("Confirm", true) || text.equals("CONFIRM", true))) {
-                    if (triggerSource != "BACKGROUND") {
-                        scheduleReturnToSource(600)
-                    }
+                    scheduleReturnToSource(600)
                 }
                 return true
             } else {
@@ -462,9 +465,7 @@ class FreezerAutomationService : AccessibilityService() {
                         } else if (isProcessingBatch && (text.equals("Force stop", true) || text.equals("Force Stop", true))) {
                             scheduleNextBatchTransition(1200)
                         } else if (!isProcessingBatch && (text.equals("OK", true) || text.equals("Ok", true) || text.equals("Confirm", true) || text.equals("CONFIRM", true))) {
-                            if (triggerSource != "BACKGROUND") {
-                                scheduleReturnToSource(600)
-                            }
+                            scheduleReturnToSource(600)
                         }
                         try {
                             parent.recycle()

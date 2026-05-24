@@ -4,9 +4,12 @@ import android.content.Intent
 import android.provider.Settings
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -540,7 +543,7 @@ fun AppsTabScreen(viewModel: AppFreezerViewModel) {
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(apps) { app ->
+                items(apps, key = { it.packageName }) { app ->
                     AppItemRow(
                         app = app,
                         onFreezeToggle = { viewModel.toggleFreeze(app) },
@@ -614,8 +617,15 @@ fun AppIcon(packageName: String, modifier: Modifier = Modifier) {
     if (appIcon.value != null) {
         val bitmap = remember(appIcon.value) {
             try {
-                appIcon.value?.toBitmap()?.asImageBitmap()
-            } catch (e: Exception) {
+                val drawable = appIcon.value
+                if (drawable != null) {
+                    val w = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 96
+                    val h = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 96
+                    drawable.toBitmap(w, h).asImageBitmap()
+                } else {
+                    null
+                }
+            } catch (t: Throwable) {
                 null
             }
         }
@@ -1458,6 +1468,129 @@ fun LogsAndInfoTabScreen(viewModel: AppFreezerViewModel) {
                     }
                 }
 
+                // 4th Option Guide Card
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, WarmGrayBorder, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(TerracottaPrimary.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = "Dynamic Manual Toggle Guide",
+                                        tint = TerracottaPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "4th Action: HYBRID LIVE POWER ACTION",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(TerracottaPrimary.copy(alpha = 0.12f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            "MANUAL FREEZE AND INSTANT THAW",
+                                            fontSize = 7.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TerracottaPrimary
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "What this action button does:\n\n• 🛑 STOP Icon: The app is awake and running. Clicking this instantly triggers automated access controls to Force-Stop the target app and freeze it.\n• ▶️ PLAY Icon: The app is already frozen. Clicking this instantly thaws (melts) and opens the application fully back to active life.",
+                                fontSize = 10.5.sp,
+                                color = MutedSlateBrown,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
+
+                // Subzero List Architectures Guide Card
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, WarmGrayBorder, RoundedCornerShape(16.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(AlertWarningGold.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.List,
+                                        contentDescription = "Core Lists Guide",
+                                        tint = AlertWarningGold,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Core Lists: BLACKLIST vs WHITELIST",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(AlertWarningGold.copy(alpha = 0.12f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            "SECURITY PROTOCOLS",
+                                            fontSize = 7.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AlertWarningGold
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Understanding the lists:\n\n• ❄️ Blacklist (Always Freeze): Automatically puts apps here once configured. The daemon monitors window state changes and freezes them the millisecond you close/minimize them.\n• 🛡️ Whitelist (Never Freeze): Completely protects chosen messaging utilities or clocks so they remain active for instant notifications.\n• 🕒 Schedule (Freeze after sometime): Idle apps that will only be dormantized automatically when they remain completely unused past the inactivity days limit.",
+                                fontSize = 10.5.sp,
+                                color = MutedSlateBrown,
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
+
+                // Interactive flow diagram
+                item {
+                    VisualGuideDiagram()
+                }
+
                 // Infographic flow card
                 item {
                     Text(
@@ -1508,6 +1641,168 @@ fun LogsAndInfoTabScreen(viewModel: AppFreezerViewModel) {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun VisualGuideDiagram(modifier: Modifier = Modifier) {
+    val primaryColor = TerracottaPrimary
+    val secondaryColor = AlertWarningGold
+    val separatorColor = WarmGrayBorder
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, separatorColor, RoundedCornerShape(16.dp))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "❄️ Subzero State Machine Flow",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            
+            // Draw custom Canvas flowchart
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp)
+            ) {
+                val canvasWidth = size.width
+                val canvasHeight = size.height
+                
+                // Draw states
+                // State 1: App Active (Left)
+                val rect1Left = 10f
+                val rect1Width = canvasWidth * 0.24f
+                val rectHeight = 50f
+                val rect1Top = (canvasHeight - rectHeight) / 2
+                
+                // Draw State 1 (Warm Active State)
+                val cornerRadius = CornerRadius(8f, 8f)
+                drawRoundRect(
+                    color = secondaryColor.copy(alpha = 0.20f),
+                    topLeft = Offset(rect1Left, rect1Top),
+                    size = androidx.compose.ui.geometry.Size(rect1Width, rectHeight),
+                    cornerRadius = cornerRadius
+                )
+                
+                // State 2: Daemon (Center)
+                val rect2Width = canvasWidth * 0.36f
+                val rect2Left = (canvasWidth - rect2Width) / 2
+                val rect2Top = rect1Top
+                drawRoundRect(
+                    color = primaryColor.copy(alpha = 0.20f),
+                    topLeft = Offset(rect2Left, rect2Top),
+                    size = androidx.compose.ui.geometry.Size(rect2Width, rectHeight),
+                    cornerRadius = cornerRadius
+                )
+                
+                // State 3: Frozen (Right)
+                val rect3Width = canvasWidth * 0.24f
+                val rect3Left = canvasWidth - rect3Width - 10f
+                val rect3Top = rect1Top
+                drawRoundRect(
+                    color = separatorColor.copy(alpha = 0.40f),
+                    topLeft = Offset(rect3Left, rect3Top),
+                    size = androidx.compose.ui.geometry.Size(rect3Width, rectHeight),
+                    cornerRadius = cornerRadius
+                )
+                
+                // Draw Connector Arrows
+                // Arrow 1 -> 2
+                val arrow1Start = rect1Left + rect1Width
+                val arrow1End = rect2Left
+                val arrowY = canvasHeight / 2
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.7f),
+                    start = Offset(arrow1Start, arrowY),
+                    end = Offset(arrow1End, arrowY),
+                    strokeWidth = 4f
+                )
+                // Arrowhead 1 -> 2
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.7f),
+                    start = Offset(arrow1End - 8f, arrowY - 6f),
+                    end = Offset(arrow1End, arrowY),
+                    strokeWidth = 4f
+                )
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.7f),
+                    start = Offset(arrow1End - 8f, arrowY + 6f),
+                    end = Offset(arrow1End, arrowY),
+                    strokeWidth = 4f
+                )
+                
+                // Arrow 2 -> 3
+                val arrow2Start = rect2Left + rect2Width
+                val arrow2End = rect3Left
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.7f),
+                    start = Offset(arrow2Start, arrowY),
+                    end = Offset(arrow2End, arrowY),
+                    strokeWidth = 4f
+                )
+                // Arrowhead 2 -> 3
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.7f),
+                    start = Offset(arrow2End - 8f, arrowY - 6f),
+                    end = Offset(arrow2End, arrowY),
+                    strokeWidth = 4f
+                )
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.7f),
+                    start = Offset(arrow2End - 8f, arrowY + 6f),
+                    end = Offset(arrow2End, arrowY),
+                    strokeWidth = 4f
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Text Legend
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "App Awake\n(In RAM)",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = onSurface,
+                    modifier = Modifier.width(75.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 11.sp
+                )
+                Text(
+                    text = "Accessibility Core\n(Silent Stop Intent)",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = onSurface,
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 11.sp
+                )
+                Text(
+                    text = "Clean Freeze\n(Dormant)",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = onSurface,
+                    modifier = Modifier.width(75.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    lineHeight = 11.sp
+                )
             }
         }
     }
