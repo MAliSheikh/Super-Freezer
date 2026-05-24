@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
 
+@android.annotation.SuppressLint("NotificationPermission")
 object NotificationHelper {
     private const val CHANNEL_ID = "subzero_freezer_channel"
     private const val CHANNEL_NAME = "Subzero App Freezer Actions"

@@ -139,19 +139,24 @@ class FreezerWidgetProvider : AppWidgetProvider() {
                             val appLabel = info.loadLabel(pm).toString()
                             appNamesToFreeze.add(appLabel)
 
-                            // Update DB state
-                            val updated = (dbState ?: com.example.data.AppFrozenState(
-                                packageName = info.packageName,
-                                appName = appLabel
-                            )).copy(isFrozen = true)
-                            repository.insertOrUpdateAppState(updated)
+                            // Update DB state immediately only if Accessibility supervisor is NOT running (the service will do it step-by-step as they process)
+                            if (!FreezerAutomationService.isRunning) {
+                                val updated = (dbState ?: com.example.data.AppFrozenState(
+                                    packageName = info.packageName,
+                                    appName = appLabel
+                                )).copy(isFrozen = true)
+                                repository.insertOrUpdateAppState(updated)
+                            }
                         }
                     }
 
                     if (packagesToFreeze.isNotEmpty()) {
-                        // ALSO freeze itself app: append context.packageName to the end of the batch!
-                        packagesToFreeze.add(context.packageName)
-                        appNamesToFreeze.add("Subzero")
+                        val freezeItself = repository.getSetting("freezeItself", "true").toBoolean()
+                        if (freezeItself) {
+                            // ALSO freeze itself app: append context.packageName to the end of the batch!
+                            packagesToFreeze.add(context.packageName)
+                            appNamesToFreeze.add("Subzero")
+                        }
 
                         if (FreezerAutomationService.isRunning) {
                             // Forward batch to accessibility service

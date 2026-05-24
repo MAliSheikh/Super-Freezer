@@ -36,6 +36,9 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
     private val _includeSystemApps = MutableStateFlow(false)
     val includeSystemApps: StateFlow<Boolean> = _includeSystemApps.asStateFlow()
 
+    private val _freezeItself = MutableStateFlow(true)
+    val freezeItself: StateFlow<Boolean> = _freezeItself.asStateFlow()
+
     private val _isAccessibilityEnabled = MutableStateFlow(false)
     val isAccessibilityEnabled: StateFlow<Boolean> = _isAccessibilityEnabled.asStateFlow()
 
@@ -145,6 +148,7 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
             _autoFreezeDays.value = repository.getSetting("autoFreezeDays", "7").toIntOrNull() ?: 7
             _freezeOnScreenOff.value = repository.getSetting("freezeOnScreenOff", "false").toBoolean()
             _includeSystemApps.value = repository.getSetting("includeSystemApps", "false").toBoolean()
+            _freezeItself.value = repository.getSetting("freezeItself", "true").toBoolean()
         }
     }
 
@@ -166,6 +170,11 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
     fun updateIncludeSystemApps(enabled: Boolean) {
         _includeSystemApps.value = enabled
         viewModelScope.launch { repository.saveSetting("includeSystemApps", enabled.toString()) }
+    }
+
+    fun updateFreezeItself(enabled: Boolean) {
+        _freezeItself.value = enabled
+        viewModelScope.launch { repository.saveSetting("freezeItself", enabled.toString()) }
     }
 
     fun setSearchQuery(query: String) {
@@ -443,20 +452,24 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
                     packagesToFreeze.add(app.packageName)
                     appNamesToFreeze.add(app.appName)
                     
-                    // Update database to mark as frozen
-                    val updated = (dbState ?: AppFrozenState(
-                        packageName = app.packageName,
-                        appName = app.appName
-                    )).copy(isFrozen = true)
-                    repository.insertOrUpdateAppState(updated)
+                    // Update database to mark as frozen (Only do this immediately if Accessibility Service is NOT running to manage it step-by-step)
+                    if (!FreezerAutomationService.isRunning) {
+                        val updated = (dbState ?: AppFrozenState(
+                            packageName = app.packageName,
+                            appName = app.appName
+                        )).copy(isFrozen = true)
+                        repository.insertOrUpdateAppState(updated)
+                    }
                 }
             }
             
             if (packagesToFreeze.isNotEmpty()) {
-                // Additionally freeze itself app at the very end
-                val myPkg = getApplication<Application>().packageName
-                packagesToFreeze.add(myPkg)
-                appNamesToFreeze.add("Subzero")
+                // Additionally freeze itself app at the very end if enabled
+                if (_freezeItself.value) {
+                    val myPkg = getApplication<Application>().packageName
+                    packagesToFreeze.add(myPkg)
+                    appNamesToFreeze.add("Subzero")
+                }
 
                 if (FreezerAutomationService.isRunning) {
                     val intent = Intent(getApplication(), FreezerAutomationService::class.java).apply {

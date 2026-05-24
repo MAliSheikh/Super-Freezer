@@ -44,6 +44,18 @@ fun MainFreezerScreen(viewModel: AppFreezerViewModel) {
     var activeTab by remember { mutableStateOf(0) } // 0: Apps, 1: Settings, 2: System Logs & Info
     val isDark = isSystemInDarkTheme()
 
+    val context = LocalContext.current
+    val activity = remember(context) {
+        var c = context
+        while (c is android.content.ContextWrapper) {
+            if (c is android.app.Activity) {
+                return@remember c
+            }
+            c = c.baseContext
+        }
+        null as android.app.Activity?
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar(
@@ -175,13 +187,23 @@ fun AppsTabScreen(viewModel: AppFreezerViewModel) {
 
     var showWarningForSystemApp by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+    val activity = remember(context) {
+        var c = context
+        while (c is android.content.ContextWrapper) {
+            if (c is android.app.Activity) {
+                return@remember c
+            }
+            c = c.baseContext
+        }
+        null as android.app.Activity?
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // App header
+        // App header (Stay fixed at topmost so the user can easily see title and hit refresh)
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -212,337 +234,355 @@ fun AppsTabScreen(viewModel: AppFreezerViewModel) {
             }
         }
 
-        // Quick Stats / Mode Switch Banner from geometric design
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isDark) TerracottaPrimary.copy(alpha = 0.25f) else SoftPeachLight
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp)
-                .border(1.dp, WarmGrayBorder, RoundedCornerShape(24.dp)),
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(TerracottaPrimary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = "Active info",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = if (isWhitelistMode) "Whitelist Mode" else "Blacklist Mode",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontSize = 15.sp
-                        )
-                        val frozenCount = apps.count { it.isFrozen }
-                        Text(
-                            text = "$frozenCount apps frozen / asleep",
-                            color = MutedSlateBrown,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-                Button(
-                    onClick = { viewModel.updateWhitelistMode(!isWhitelistMode) },
-                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Text("SWITCH", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            }
-        }
-
-        // Help section explaining Approved & Whitelist / Blacklist
+        // Help guideline states and collapsible guides
         var showHelpInfo by remember { mutableStateOf(false) }
-        
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
-                .border(1.dp, WarmGrayBorder, RoundedCornerShape(12.dp)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp)
+
+        // All main dashboard controls, banners, and lists nested within a cohesive, smooth-scrolling container
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 96.dp) // Large bottom padding ensures absolutely no elements are ever clipped or hidden by the bottom bar or FAB
         ) {
-            Column(modifier = Modifier.padding(10.dp)) {
-                Row(
+            item {
+                // Quick Stats / Mode Switch Banner from geometric design
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDark) TerracottaPrimary.copy(alpha = 0.25f) else SoftPeachLight
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showHelpInfo = !showHelpInfo },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(bottom = 4.dp)
+                        .border(1.dp, WarmGrayBorder, RoundedCornerShape(24.dp)),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.HelpOutline,
-                            contentDescription = "Help Guide",
-                            tint = TerracottaPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "How do these options and filters work?",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    Icon(
-                        imageVector = if (showHelpInfo) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Toggle Guide",
-                        tint = MutedSlateBrown,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                if (showHelpInfo) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Customize winterization for each app using the icons on the right side:",
-                        fontSize = 11.sp,
-                        color = MutedSlateBrown,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Icon(
-                            imageVector = Icons.Filled.AcUnit,
-                            contentDescription = null,
-                            tint = TerracottaPrimary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text("Always Freeze Mode", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Automatically put to sleep whenever you hit 'START AUTO FREEZE' or click the home widget.", fontSize = 10.sp, color = MutedSlateBrown)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Icon(
-                            imageVector = Icons.Filled.AccessTime,
-                            contentDescription = null,
-                            tint = AlertWarningGold,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text("Freeze After Sometime Mode", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Intelligent sleep. Automatically frozen during freeze sweeps only if inactive for 3 minutes.", fontSize = 10.sp, color = MutedSlateBrown)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Icon(
-                            imageVector = Icons.Filled.Verified,
-                            contentDescription = null,
-                            tint = Color(0xFF4CAF50),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Column {
-                            Text("Never Freeze (Approved/Whitelist)", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Completely whitelisted. Ideal for messengers, system clocks, or mail trackers to run normally.", fontSize = 10.sp, color = MutedSlateBrown)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Search bar styled elegantly
-        OutlinedTextField(
-            value = searchVal,
-            onValueChange = { viewModel.setSearchQuery(it) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, WarmGrayBorder, RoundedCornerShape(12.dp)),
-            shape = RoundedCornerShape(12.dp),
-            placeholder = { Text("Search installed apps...", color = MutedSlateBrown) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = TerracottaPrimary) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                focusedBorderColor = TerracottaPrimary,
-                unfocusedBorderColor = Color.Transparent
-            ),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Quick Filter Badges Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilterTabButton(
-                title = "All",
-                isActive = filterType == AppFreezerViewModel.FilterType.ALL,
-                onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.ALL) }
-            )
-            FilterTabButton(
-                title = "Frozen",
-                isActive = filterType == AppFreezerViewModel.FilterType.FROZEN,
-                onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.FROZEN) }
-            )
-            FilterTabButton(
-                title = "Approved",
-                isActive = filterType == AppFreezerViewModel.FilterType.WHITELISTED,
-                onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.WHITELISTED) }
-            )
-            FilterTabButton(
-                title = "Blacklist",
-                isActive = filterType == AppFreezerViewModel.FilterType.BLACKLISTED,
-                onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.BLACKLISTED) }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Accessibility Warning status Banner
-        if (!isAccessibilityEnabled) {
-            Card(
-                onClick = {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    context.startActivity(intent)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-                    .border(1.dp, AlertWarningGold.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(AlertWarningGold.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = "Warning",
-                            tint = AlertWarningGold,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(TerracottaPrimary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = "Active info",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = if (isWhitelistMode) "Whitelist Mode" else "Blacklist Mode",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    fontSize = 15.sp
+                                )
+                                val frozenCount = apps.count { it.isFrozen }
+                                Text(
+                                    text = "$frozenCount apps frozen / asleep",
+                                    color = MutedSlateBrown,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = { viewModel.updateWhitelistMode(!isWhitelistMode) },
+                            colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("SWITCH", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Accessibility Automation Off",
-                            fontWeight = FontWeight.Bold,
-                            color = AlertWarningGold,
-                            fontSize = 13.sp
-                        )
-                        Text(
-                            text = "Enable automated click flow helper to easily bypass device limitations.",
-                            color = MutedSlateBrown,
-                            fontSize = 11.sp
-                        )
-                    }
-                    Icon(
-                        Icons.Default.ArrowForward,
-                        contentDescription = "Grant Accessibility",
-                        tint = TerracottaPrimary,
-                        modifier = Modifier.size(16.dp)
-                    )
                 }
             }
-        }
 
-        // Freezer Hero Quick Trigger Action Banner
-        Button(
-            onClick = { viewModel.triggerBatchAutoFreeze() },
-            colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.AcUnit, contentDescription = "Freeze All", tint = Color.White)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "START AUTO FREEZE SEQUENCE",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    letterSpacing = 0.5.sp
+            item {
+                // Help section explaining Approved & Whitelist / Blacklist
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .border(1.dp, WarmGrayBorder, RoundedCornerShape(12.dp)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showHelpInfo = !showHelpInfo },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.HelpOutline,
+                                    contentDescription = "Help Guide",
+                                    tint = TerracottaPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "How do these options and filters work?",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Icon(
+                                imageVector = if (showHelpInfo) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Toggle Guide",
+                                tint = MutedSlateBrown,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        if (showHelpInfo) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Customize winterization for each app using the icons on the right side:",
+                                fontSize = 11.sp,
+                                color = MutedSlateBrown,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Icon(
+                                    imageVector = Icons.Filled.AcUnit,
+                                    contentDescription = null,
+                                    tint = TerracottaPrimary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text("Always Freeze Mode", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("Automatically put to sleep whenever you hit 'START AUTO FREEZE' or click the home widget.", fontSize = 10.sp, color = MutedSlateBrown)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Icon(
+                                    imageVector = Icons.Filled.AccessTime,
+                                    contentDescription = null,
+                                    tint = AlertWarningGold,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text("Freeze After Sometime Mode", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("Intelligent sleep. Automatically frozen during freeze sweeps only if inactive for 3 minutes.", fontSize = 10.sp, color = MutedSlateBrown)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Icon(
+                                    imageVector = Icons.Filled.Verified,
+                                    contentDescription = null,
+                                    tint = Color(0xFF4CAF50),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text("Never Freeze (Approved/Whitelist)", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("Completely whitelisted. Ideal for messengers, system clocks, or mail trackers to run normally.", fontSize = 10.sp, color = MutedSlateBrown)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                // Search bar styled elegantly
+                OutlinedTextField(
+                    value = searchVal,
+                    onValueChange = { viewModel.setSearchQuery(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, WarmGrayBorder, RoundedCornerShape(12.dp)),
+                    shape = RoundedCornerShape(12.dp),
+                    placeholder = { Text("Search installed apps...", color = MutedSlateBrown) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = TerracottaPrimary) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = TerracottaPrimary,
+                        unfocusedBorderColor = Color.Transparent
+                    ),
+                    singleLine = true
                 )
             }
-        }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = TerracottaPrimary)
-            }
-        } else if (apps.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Outlined.AcUnit,
-                        contentDescription = "Empty list",
-                        modifier = Modifier.size(60.dp),
-                        tint = MutedSlateBrown
+            item {
+                // Quick Filter Badges Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterTabButton(
+                        title = "All",
+                        isActive = filterType == AppFreezerViewModel.FilterType.ALL,
+                        onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.ALL) }
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "No apps match filter criteria or search query.",
-                        color = MutedSlateBrown,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
+                    FilterTabButton(
+                        title = "Frozen",
+                        isActive = filterType == AppFreezerViewModel.FilterType.FROZEN,
+                        onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.FROZEN) }
                     )
-                    Text(
-                        text = "Try clearing search or check settings.",
-                        color = MutedSlateBrown.copy(alpha = 0.8f),
-                        fontSize = 12.sp
+                    FilterTabButton(
+                        title = "Approved",
+                        isActive = filterType == AppFreezerViewModel.FilterType.WHITELISTED,
+                        onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.WHITELISTED) }
+                    )
+                    FilterTabButton(
+                        title = "Blacklist",
+                        isActive = filterType == AppFreezerViewModel.FilterType.BLACKLISTED,
+                        onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.BLACKLISTED) }
                     )
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+
+            if (!isAccessibilityEnabled) {
+                item {
+                    // Accessibility Warning status Banner
+                    Card(
+                        onClick = {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp)
+                            .border(1.dp, AlertWarningGold.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(AlertWarningGold.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = "Warning",
+                                    tint = AlertWarningGold,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Accessibility Automation Off",
+                                    fontWeight = FontWeight.Bold,
+                                    color = AlertWarningGold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Enable automated click flow helper to easily bypass device limitations.",
+                                    color = MutedSlateBrown,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Icon(
+                                Icons.Default.ArrowForward,
+                                contentDescription = "Grant Accessibility",
+                                tint = TerracottaPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                // Freezer Hero Quick Trigger Action Banner
+                Button(
+                    onClick = { viewModel.triggerBatchAutoFreeze() },
+                    colors = ButtonDefaults.buttonColors(containerColor = TerracottaPrimary),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.AcUnit, contentDescription = "Freeze All", tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "START AUTO FREEZE SEQUENCE",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+            }
+
+            if (isLoading) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = TerracottaPrimary)
+                    }
+                }
+            } else if (apps.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Outlined.AcUnit,
+                                contentDescription = "Empty list",
+                                modifier = Modifier.size(60.dp),
+                                tint = MutedSlateBrown
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "No apps match filter criteria or search query.",
+                                color = MutedSlateBrown,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "Try clearing search or check settings.",
+                                color = MutedSlateBrown.copy(alpha = 0.8f),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            } else {
                 items(apps, key = { it.packageName }) { app ->
                     AppItemRow(
                         app = app,
@@ -1014,6 +1054,51 @@ fun SettingsTabScreen(viewModel: AppFreezerViewModel) {
                 Switch(
                     checked = includeSystem,
                     onCheckedChange = { viewModel.updateIncludeSystemApps(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = TerracottaPrimary,
+                        checkedTrackColor = SoftPeachContainer.copy(alpha = 0.5f),
+                        uncheckedThumbColor = MutedSlateBrown,
+                        uncheckedTrackColor = if (isDark) Color(0xFF2C2522) else WarmGrayBorder
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Toggle Freeze App Itself (Subzero)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, WarmGrayBorder, RoundedCornerShape(16.dp))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Freeze Subzero (Itself)",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 15.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Additionally force-stop Subzero itself after running any batch freeze operation.",
+                        color = MutedSlateBrown,
+                        fontSize = 11.sp
+                    )
+                }
+                val freezeItself by viewModel.freezeItself.collectAsState()
+                Switch(
+                    checked = freezeItself,
+                    onCheckedChange = { viewModel.updateFreezeItself(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = TerracottaPrimary,
                         checkedTrackColor = SoftPeachContainer.copy(alpha = 0.5f),

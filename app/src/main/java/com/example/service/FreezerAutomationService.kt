@@ -34,6 +34,7 @@ class FreezerAutomationService : AccessibilityService() {
     private var currentPackage: String? = null
     private var currentAppName: String? = null
     private var lastEventTime = 0L
+    private var lastBatchItemStartTime = 0L
 
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingTransition: Runnable? = null
@@ -69,6 +70,7 @@ class FreezerAutomationService : AccessibilityService() {
 
             when (intent.action) {
                 ACTION_FORCE_STOP_BATCH -> {
+                    cancelAllPendingOperations()
                     val packages = intent.getStringArrayListExtra(EXTRA_PACKAGE_LIST)
                     val names = intent.getStringArrayListExtra(EXTRA_APP_NAMES)
                     if (packages != null && names != null) {
@@ -81,6 +83,7 @@ class FreezerAutomationService : AccessibilityService() {
                     }
                 }
                 ACTION_FORCE_STOP -> {
+                    cancelAllPendingOperations()
                     val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME)
                     if (pkg != null) {
                         batchPackageQueue.clear()
@@ -97,6 +100,7 @@ class FreezerAutomationService : AccessibilityService() {
     }
 
     private fun processNextInBatch() {
+        lastBatchItemStartTime = System.currentTimeMillis()
         if (batchPackageQueue.isNotEmpty() && batchAppNameQueue.isNotEmpty()) {
             val pkg = batchPackageQueue.removeAt(0)
             val name = batchAppNameQueue.removeAt(0)
@@ -107,7 +111,39 @@ class FreezerAutomationService : AccessibilityService() {
             // Instantly notify about freeze operation success
             NotificationHelper.showFreezeNotification(this, name, pkg)
             
-            automateForceStop(pkg)
+            // Update database to mark as frozen during processing
+            serviceScope.launch {
+                try {
+                    val state = repository.getAppState(pkg)
+                    if (state != null) {
+                        repository.insertOrUpdateAppState(state.copy(isFrozen = true))
+                    } else {
+                        repository.insertOrUpdateAppState(AppFrozenState(packageName = pkg, appName = name, isFrozen = true))
+                    }
+                } catch (e: Exception) {
+                    Log.e("FreezerService", "Error updating freeze state in DB for $pkg", e)
+                }
+            }
+            
+            if (pkg == packageName) {
+                Log.d("FreezerService", "Finished batch. Safe closing itself gracefully to preserve Accessibility Service.")
+                isProcessingBatch = false
+                currentPackage = null
+                currentAppName = null
+                
+                // Go straight to Home screen safely (do NOT relaunch MainActivity which breaks the window/input channel)
+                try {
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(homeIntent)
+                } catch (e: Exception) {
+                    Log.e("FreezerService", "Error navigating home during self-freeze", e)
+                }
+            } else {
+                automateForceStop(pkg)
+            }
         } else {
             isProcessingBatch = false
             currentPackage = null
@@ -137,6 +173,13 @@ class FreezerAutomationService : AccessibilityService() {
         }
         pendingReturn = runnable
         handler.postDelayed(runnable, delayMs)
+    }
+
+    private fun cancelAllPendingOperations() {
+        pendingTransition?.let { handler.removeCallbacks(it) }
+        pendingReturn?.let { handler.removeCallbacks(it) }
+        pendingTransition = null
+        pendingReturn = null
     }
 
     private fun returnToSource() {
@@ -182,52 +225,120 @@ class FreezerAutomationService : AccessibilityService() {
         startActivity(intent)
     }
 
+    private fun isSystemOverlayOrKeyboard(pkg: String): Boolean {
+        val lower = pkg.lowercase()
+        return pkg.isEmpty() || 
+               pkg == "android" || 
+               lower.contains("systemui") || 
+               lower.contains("keyboard") || 
+               lower.contains("inputmethod") || 
+               lower.contains("ime") || 
+               lower.contains("input") ||
+               lower.contains("accessibility") ||
+               lower.contains("quicksearchbox")
+    }
+
+    private fun isLauncherOrLaunchableApp(pkg: String): Boolean {
+        if (pkg.isEmpty()) return false
+        if (isLauncherPackage(pkg)) return true
+        if (pkg == "com.android.settings" || pkg == packageName) return true
+        
+        try {
+            val pm = packageManager
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(pkg)
+            }
+            val list = pm.queryIntentActivities(intent, 0)
+            if (list.isNotEmpty()) {
+                return true
+            }
+        } catch (e: Exception) {}
+        
+        return false
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val now = System.currentTimeMillis()
+        
+        // Safety timeout check: if a batch item is taking more than 7s (stuck details screen or manual user interruption)
+        if (isProcessingBatch && (now - lastBatchItemStartTime > 7000)) {
+            Log.d("FreezerService", "Batch item processing timeout (7s). Aborting batch gracefully.")
+            isProcessingBatch = false
+            batchPackageQueue.clear()
+            batchAppNameQueue.clear()
+            cancelAllPendingOperations()
+        }
+
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val newPackage = event.packageName?.toString() ?: ""
 
-            // Close detection check for "Always Freeze" apps
-            val lastPkg = lastForegroundPackage
-            if (lastPkg != null && lastPkg != newPackage && lastPkg != packageName && lastPkg != "com.android.settings" && !isLauncherPackage(lastPkg)) {
-                
-                // Clear immediately to prevent multiple triggers or endless loops!
-                lastForegroundPackage = null
-                
-                serviceScope.launch {
-                    val state = repository.getAppState(lastPkg)
-                    if (state != null && state.isBlacklisted && !state.isWhitelisted) {
-                        Log.d("FreezerService", "Always Freeze app closed by user: $lastPkg")
-                        
-                        // Setup silent background freeze
-                        val intent = Intent(this@FreezerAutomationService, FreezerAutomationService::class.java).apply {
-                            action = ACTION_FORCE_STOP
-                            putExtra(EXTRA_PACKAGE_NAME, lastPkg)
-                            putExtra("EXTRA_TRIGGER_SOURCE", "BACKGROUND")
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
+            // Completely ignore ephemeral system overlays/keyboards/dialogs for state transition detection
+            if (!isSystemOverlayOrKeyboard(newPackage) && isLauncherOrLaunchableApp(newPackage)) {
+                // If the user navigates away from settings/our app during batch processing, cancel the batch gracefully
+                if (isProcessingBatch && newPackage != "com.android.settings" && newPackage != packageName) {
+                    Log.d("FreezerService", "User exited settings screen during batch. Canceling batch freeze.")
+                    isProcessingBatch = false
+                    batchPackageQueue.clear()
+                    batchAppNameQueue.clear()
+                    cancelAllPendingOperations()
+                }
 
-                        // Mark as frozen in DB
-                        val updated = state.copy(isFrozen = true)
-                        repository.insertOrUpdateAppState(updated)
+                // Close detection check for "Always Freeze" apps
+                val lastPkg = lastForegroundPackage
+                if (lastPkg != null && lastPkg != newPackage && lastPkg != packageName && lastPkg != "com.android.settings" && !isLauncherPackage(lastPkg)) {
+                    
+                    // Clear immediately to prevent multiple triggers or endless loops!
+                    lastForegroundPackage = null
+                    
+                    serviceScope.launch {
+                        val state = repository.getAppState(lastPkg)
+                        if (state != null && state.isBlacklisted && !state.isWhitelisted) {
+                            Log.d("FreezerService", "Always Freeze app closed by user: $lastPkg")
+                            
+                            // Setup silent background freeze
+                            val intent = Intent(this@FreezerAutomationService, FreezerAutomationService::class.java).apply {
+                                action = ACTION_FORCE_STOP
+                                putExtra(EXTRA_PACKAGE_NAME, lastPkg)
+                                putExtra("EXTRA_TRIGGER_SOURCE", "BACKGROUND")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
 
-                        // Insert Log
-                        repository.insertLog(
-                            FreezeLog(
-                                packageName = lastPkg,
-                                appName = state.appName,
-                                method = "Instant App-Close Freeze",
-                                success = true
+                            // Mark as frozen in DB
+                            val updated = state.copy(isFrozen = true)
+                            repository.insertOrUpdateAppState(updated)
+
+                            // Insert Log
+                            repository.insertLog(
+                                FreezeLog(
+                                    packageName = lastPkg,
+                                    appName = state.appName,
+                                    method = "Instant App-Close Freeze",
+                                    success = true
+                                )
                             )
-                        )
 
-                        startService(intent)
+                            startService(intent)
+                        }
                     }
                 }
-            }
 
-            if (newPackage.isNotEmpty() && newPackage != packageName && newPackage != "com.android.settings" && !isLauncherPackage(newPackage)) {
-                lastForegroundPackage = newPackage
+                if (newPackage.isNotEmpty() && newPackage != packageName && newPackage != "com.android.settings" && !isLauncherPackage(newPackage)) {
+                    lastForegroundPackage = newPackage
+
+                    // User opened/thawed this app! Sync DB state to show it is warm/active now!
+                    serviceScope.launch {
+                        try {
+                            val state = repository.getAppState(newPackage)
+                            if (state != null && state.isFrozen) {
+                                repository.insertOrUpdateAppState(state.copy(isFrozen = false))
+                                Log.d("FreezerService", "App opened: marked $newPackage as unfrozen (warm)")
+                            }
+                        } catch (e: Exception) {
+                            Log.e("FreezerService", "Error warming app $newPackage", e)
+                        }
+                    }
+                }
             }
 
             handleAccessibilityAction()
@@ -366,8 +477,57 @@ class FreezerAutomationService : AccessibilityService() {
         }
     }
 
+    private fun findConfirmationButton(node: AccessibilityNodeInfo, depth: Int = 0): AccessibilityNodeInfo? {
+        if (depth > 25) return null
+        val viewId = node.viewIdResourceName
+        val text = node.text?.toString()?.trim()
+
+        if (viewId == "android:id/button1") {
+            if (node.isClickable && node.isEnabled) {
+                return node
+            }
+        }
+        val targetTexts = setOf("OK", "Ok", "Confirm", "CONFIRM", "Force stop", "FORCE STOP", "Force Stop")
+        if (text != null && targetTexts.contains(text)) {
+            // Note: only treat as a dialog confirm button if its viewId is NOT the main settings list force stop button ID to avoid confusion
+            if (node.isClickable && node.isEnabled && viewId != "com.android.settings:id/force_stop_button") {
+                return node
+            }
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val button = findConfirmationButton(child, depth + 1)
+            if (button != null) {
+                return button
+            }
+            try {
+                child.recycle()
+            } catch (e: Exception) {}
+        }
+        return null
+    }
+
     private fun findAndClickForceStopButtons(node: AccessibilityNodeInfo) {
-        // First check if Force Stop button is already disabled (meaning already frozen)
+        // 1. First probe if there is a dialog confirmation button active in the window
+        val confirmBtn = findConfirmationButton(node)
+        if (confirmBtn != null) {
+            Log.d("FreezerService", "Detected active confirmation dialog button! Clicking it.")
+            confirmBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            
+            // Progress the batch transition
+            if (isProcessingBatch) {
+                scheduleNextBatchTransition(500)
+            } else {
+                scheduleReturnToSource(600)
+            }
+            try {
+                confirmBtn.recycle()
+            } catch (e: Exception) {}
+            return
+        }
+
+        // 2. ONLY proceed with checking/acting on the primary App Details screen if NO dialog confirmation button is active
         if (isForceStopAlreadyDisabled(node)) {
             Log.d("FreezerService", "Force stop button is already disabled. Transitioning...")
             if (isProcessingBatch) {
