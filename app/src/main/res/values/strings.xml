@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">App Freezer</string>
+    <string name="app_description">Optimize battery, manage background processes, and easily blacklist or whitelist packages to manage custom background freeze operations.</string>
+</resources>

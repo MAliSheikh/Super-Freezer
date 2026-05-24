@@ -1,0 +1,6 @@
+{
+  "name": "App Freezer",
+  "description": "Optimize battery, manage background processes, and easily blacklist or whitelist packages to manage custom background freeze operations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
