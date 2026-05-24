@@ -58,9 +58,6 @@ class FreezerAutomationService : AccessibilityService() {
             notificationTimeout = 100
         }
         this.serviceInfo = info
-
-        // Start background checking loop
-        startBackgroundFreezerLoop()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -284,44 +281,7 @@ class FreezerAutomationService : AccessibilityService() {
                     cancelAllPendingOperations()
                 }
 
-                // Close detection check for "Always Freeze" apps
-                val lastPkg = lastForegroundPackage
-                if (lastPkg != null && lastPkg != newPackage && lastPkg != packageName && lastPkg != "com.android.settings" && !isLauncherPackage(lastPkg)) {
-                    
-                    // Clear immediately to prevent multiple triggers or endless loops!
-                    lastForegroundPackage = null
-                    
-                    serviceScope.launch {
-                        val state = repository.getAppState(lastPkg)
-                        if (state != null && state.isBlacklisted && !state.isWhitelisted) {
-                            Log.d("FreezerService", "Always Freeze app closed by user: $lastPkg")
-                            
-                            // Setup silent background freeze
-                            val intent = Intent(this@FreezerAutomationService, FreezerAutomationService::class.java).apply {
-                                action = ACTION_FORCE_STOP
-                                putExtra(EXTRA_PACKAGE_NAME, lastPkg)
-                                putExtra("EXTRA_TRIGGER_SOURCE", "BACKGROUND")
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
 
-                            // Mark as frozen in DB
-                            val updated = state.copy(isFrozen = true)
-                            repository.insertOrUpdateAppState(updated)
-
-                            // Insert Log
-                            repository.insertLog(
-                                FreezeLog(
-                                    packageName = lastPkg,
-                                    appName = state.appName,
-                                    method = "Instant App-Close Freeze",
-                                    success = true
-                                )
-                            )
-
-                            startService(intent)
-                        }
-                    }
-                }
 
                 if (newPackage.isNotEmpty() && newPackage != packageName && newPackage != "com.android.settings" && !isLauncherPackage(newPackage)) {
                     lastForegroundPackage = newPackage

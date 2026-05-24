@@ -36,7 +36,7 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
     private val _includeSystemApps = MutableStateFlow(false)
     val includeSystemApps: StateFlow<Boolean> = _includeSystemApps.asStateFlow()
 
-    private val _freezeItself = MutableStateFlow(true)
+    private val _freezeItself = MutableStateFlow(false)
     val freezeItself: StateFlow<Boolean> = _freezeItself.asStateFlow()
 
     private val _isAccessibilityEnabled = MutableStateFlow(false)
@@ -148,7 +148,7 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
             _autoFreezeDays.value = repository.getSetting("autoFreezeDays", "7").toIntOrNull() ?: 7
             _freezeOnScreenOff.value = repository.getSetting("freezeOnScreenOff", "false").toBoolean()
             _includeSystemApps.value = repository.getSetting("includeSystemApps", "false").toBoolean()
-            _freezeItself.value = repository.getSetting("freezeItself", "true").toBoolean()
+            _freezeItself.value = repository.getSetting("freezeItself", "false").toBoolean()
         }
     }
 
@@ -423,12 +423,15 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
             
             val currentTime = System.currentTimeMillis()
             
+            val savedStatesMap = repository.getAllAppStates().associateBy { it.packageName }
             for (app in apps) {
                 // If system app, include only if "include system apps" toggle is true OR if it is a user-launchable app like Gmail
                 if (app.isSystemApp && !includeSystem && !app.isLaunchable) continue
-                if (app.isFrozen) continue
                 
-                val dbState = repository.getAppState(app.packageName)
+                val dbState = savedStatesMap[app.packageName]
+                val isFrozen = dbState?.isFrozen ?: false
+                if (isFrozen) continue
+                
                 val isWhitelisted = dbState?.isWhitelisted ?: false
                 val isBlacklisted = dbState?.isBlacklisted ?: false
                 

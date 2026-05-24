@@ -151,7 +151,7 @@ class FreezerWidgetProvider : AppWidgetProvider() {
                     }
 
                     if (packagesToFreeze.isNotEmpty()) {
-                        val freezeItself = repository.getSetting("freezeItself", "true").toBoolean()
+                        val freezeItself = repository.getSetting("freezeItself", "false").toBoolean()
                         if (freezeItself) {
                             // ALSO freeze itself app: append context.packageName to the end of the batch!
                             packagesToFreeze.add(context.packageName)
