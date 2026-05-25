@@ -180,6 +180,7 @@ fun AppsTabScreen(viewModel: AppFreezerViewModel) {
     val searchVal by viewModel.searchQuery.collectAsState()
     val filterType by viewModel.filterType.collectAsState()
     val apps by viewModel.filteredApps.collectAsState()
+    val allApps by viewModel.allMappedApps.collectAsState()
     val isLoading by viewModel.isLoadingApps.collectAsState()
     val isWhitelistMode by viewModel.isWhitelistMode.collectAsState()
     val isAccessibilityEnabled by viewModel.isAccessibilityEnabled.collectAsState()
@@ -285,9 +286,11 @@ fun AppsTabScreen(viewModel: AppFreezerViewModel) {
                                     color = MaterialTheme.colorScheme.onBackground,
                                     fontSize = 15.sp
                                 )
-                                val frozenCount = apps.count { it.isFrozen }
+                                val frozenCount = allApps.count { it.isFrozen }
+                                val approvedCount = allApps.count { it.isWhitelisted }
+                                val blacklistedCount = allApps.count { it.isBlacklisted }
                                 Text(
-                                    text = "$frozenCount apps frozen / asleep",
+                                    text = "$frozenCount frozen • $approvedCount approved • $blacklistedCount always-freeze",
                                     color = MutedSlateBrown,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
@@ -437,22 +440,22 @@ fun AppsTabScreen(viewModel: AppFreezerViewModel) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterTabButton(
-                        title = "All",
+                        title = "All (${allApps.size})",
                         isActive = filterType == AppFreezerViewModel.FilterType.ALL,
                         onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.ALL) }
                     )
                     FilterTabButton(
-                        title = "Frozen",
+                        title = "Frozen (${allApps.count { it.isFrozen }})",
                         isActive = filterType == AppFreezerViewModel.FilterType.FROZEN,
                         onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.FROZEN) }
                     )
                     FilterTabButton(
-                        title = "Approved",
+                        title = "Approved (${allApps.count { it.isWhitelisted }})",
                         isActive = filterType == AppFreezerViewModel.FilterType.WHITELISTED,
                         onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.WHITELISTED) }
                     )
                     FilterTabButton(
-                        title = "Blacklist",
+                        title = "Blacklist (${allApps.count { it.isBlacklisted }})",
                         isActive = filterType == AppFreezerViewModel.FilterType.BLACKLISTED,
                         onClick = { viewModel.setFilterType(AppFreezerViewModel.FilterType.BLACKLISTED) }
                     )

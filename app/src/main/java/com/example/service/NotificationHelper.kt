@@ -67,4 +67,32 @@ object NotificationHelper {
             // safe fallback
         }
     }
+
+    fun showScreenOffFreezeNotification(context: Context, count: Int) {
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Notifies when background apps are successfully frozen."
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.star_on)
+                .setContentTitle("❄️ Subzero: Screen-Off Freeze")
+                .setContentText("Automatically put $count apps to sleep on screen off.")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+
+            notificationManager.notify(8888, builder.build())
+        } catch (e: Exception) {
+            // safe fallback
+        }
+    }
 }

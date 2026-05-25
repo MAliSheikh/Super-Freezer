@@ -46,6 +46,21 @@ class FreezerAutomationService : AccessibilityService() {
     private var triggerSource: String = "APP" // "APP", "WIDGET", "BACKGROUND"
     private var lastForegroundPackage: String? = null
 
+    private val screenEventsReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == Intent.ACTION_SCREEN_OFF) {
+                Log.d("FreezerService", "Screen turned off. Checking if freeze on screen off is enabled")
+                serviceScope.launch {
+                    val enabled = repository.getSetting("freezeOnScreenOff", "false").toBoolean()
+                    if (enabled) {
+                        Log.d("FreezerService", "Freeze on screen off is enabled! Executing screen-off auto freeze...")
+                        triggerScreenOffFreeze()
+                    }
+                }
+            }
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         isRunning = true
@@ -58,6 +73,131 @@ class FreezerAutomationService : AccessibilityService() {
             notificationTimeout = 100
         }
         this.serviceInfo = info
+
+        // Register Screen Off listener dynamically
+        try {
+            val filter = android.content.IntentFilter(Intent.ACTION_SCREEN_OFF)
+            registerReceiver(screenEventsReceiver, filter)
+            Log.d("FreezerService", "Successfully registered dynamic screen events receiver")
+        } catch (e: Exception) {
+            Log.e("FreezerService", "Error registering screen receiver", e)
+        }
+    }
+
+    private fun triggerScreenOffFreeze() {
+        serviceScope.launch {
+            try {
+                val dbStates = repository.getAllAppStates().associateBy { it.packageName }
+                val includeSystemStr = repository.getSetting("includeSystemApps", "false")
+                val includeSystem = includeSystemStr.toBoolean()
+                val autoFreezeDaysStr = repository.getSetting("autoFreezeDays", "7")
+                val autoFreezeDays = autoFreezeDaysStr.toIntOrNull() ?: 7
+                val thresholdMs = autoFreezeDays * 24L * 60L * 60L * 1000L
+                val currentTime = System.currentTimeMillis()
+
+                // Get usage stats to determine inactive apps
+                val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
+                val usageMap = mutableMapOf<String, Long>()
+                if (usageStatsManager != null) {
+                    val endTime = currentTime
+                    val startTime = endTime - (30L * 24 * 60 * 60 * 1000L) // last 30 days
+                    val stats = usageStatsManager.queryUsageStats(
+                        android.app.usage.UsageStatsManager.INTERVAL_DAILY,
+                        startTime,
+                        endTime
+                    )
+                    if (stats != null) {
+                        for (usageStat in stats) {
+                            val pkg = usageStat.packageName
+                            val lastTime = usageStat.lastTimeUsed
+                            val prev = usageMap[pkg] ?: 0L
+                            if (lastTime > prev) {
+                                usageMap[pkg] = lastTime
+                            }
+                        }
+                    }
+                }
+
+                // Query installed apps
+                val pm = packageManager
+                val packages = pm.getInstalledPackages(0)
+                val packagesToFreeze = ArrayList<String>()
+                val appNamesToFreeze = ArrayList<String>()
+
+                for (pkgInfo in packages) {
+                    val pkgName = pkgInfo.packageName
+                    if (pkgName == packageName) continue // skip itself
+
+                    val applicationInfo = pkgInfo.applicationInfo ?: continue
+                    val isSystemApp = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                    
+                    // Check if launchable
+                    val launchIntent = pm.getLaunchIntentForPackage(pkgName)
+                    val isLaunchable = launchIntent != null
+
+                    // Filter system apps
+                    if (isSystemApp && !includeSystem && !isLaunchable) continue
+
+                    val dbState = dbStates[pkgName]
+                    val isFrozen = dbState?.isFrozen ?: false
+                    if (isFrozen) continue
+
+                    val isWhitelisted = dbState?.isWhitelisted ?: false
+                    val isBlacklisted = dbState?.isBlacklisted ?: false
+
+                    val lastUsed = usageMap[pkgName] ?: dbState?.lastUsedTime ?: 0L
+                    val isInactive = (currentTime - lastUsed) > thresholdMs
+
+                    val shouldFreeze = if (isBlacklisted && !isWhitelisted) {
+                        true
+                    } else if (!isWhitelisted && !isBlacklisted) {
+                        isInactive
+                    } else {
+                        false
+                    }
+
+                    if (shouldFreeze) {
+                        val appName = applicationInfo.loadLabel(pm).toString()
+                        packagesToFreeze.add(pkgName)
+                        appNamesToFreeze.add(appName)
+
+                        // Mark as frozen in DB (since screen is off, we do a background virtual freeze)
+                        val updated = (dbState ?: AppFrozenState(
+                            packageName = pkgName,
+                            appName = appName
+                        )).copy(isFrozen = true)
+                        repository.insertOrUpdateAppState(updated)
+                    }
+                }
+
+                if (packagesToFreeze.isNotEmpty()) {
+                    // Check if "freezeItself" is true and append if enabled
+                    val freezeItself = repository.getSetting("freezeItself", "false").toBoolean()
+                    if (freezeItself) {
+                        packagesToFreeze.add(packageName)
+                        appNamesToFreeze.add("Subzero")
+                    }
+
+                    // Insert Log about screen off freeze
+                    repository.insertLog(
+                        FreezeLog(
+                            packageName = "com.example.screenoff",
+                            appName = "Screen-Off Batch Freezing",
+                            method = "Auto-Sleep Screen Off (${packagesToFreeze.size} apps)",
+                            success = true
+                        )
+                    )
+
+                    // Show Screen-Off Notification
+                    NotificationHelper.showScreenOffFreezeNotification(
+                        applicationContext,
+                        packagesToFreeze.size
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e("FreezerService", "Error in screen off freeze", e)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -621,5 +761,11 @@ class FreezerAutomationService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        try {
+            unregisterReceiver(screenEventsReceiver)
+            Log.d("FreezerService", "Successfully unregistered screen Events receiver")
+        } catch (e: Exception) {
+            Log.e("FreezerService", "Error unregistering screen receiver", e)
+        }
     }
 }

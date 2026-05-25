@@ -61,17 +61,13 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
     private val _isLoadingApps = MutableStateFlow(false)
     val isLoadingApps: StateFlow<Boolean> = _isLoadingApps.asStateFlow()
 
-    // Combined stream of app details logic safely combining using combine function
-    val filteredApps: StateFlow<List<InstalledAppInfo>> = combine(
+    // Decoupled complete mapped apps list (unfiltered by search query or filterType)
+    val allMappedApps: StateFlow<List<InstalledAppInfo>> = combine(
         _installedApps,
         repository.getAllAppStatesFlow(),
-        _searchQuery,
-        _filterType
-    ) { installedList, savedStates, search, filter ->
+        _includeSystemApps
+    ) { installedList, savedStates, includeSystem ->
         val stateMap = savedStates.associateBy { it.packageName }
-        val includeSystem = _includeSystemApps.value
-        val isWhitelist = _isWhitelistMode.value
-
         installedList
             .filter { app ->
                 if (!includeSystem && app.isSystemApp && !app.isLaunchable) false else true
@@ -85,6 +81,16 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
                     lastUsedTime = saved?.lastUsedTime ?: app.lastUsedTime
                 )
             }
+            .sortedBy { it.appName }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // UI-filtered apps stream dynamically updated based on search and tab selections
+    val filteredApps: StateFlow<List<InstalledAppInfo>> = combine(
+        allMappedApps,
+        _searchQuery,
+        _filterType
+    ) { mappedList, search, filter ->
+        mappedList
             .filter { app ->
                 if (search.isEmpty()) true else {
                     app.appName.contains(search, ignoreCase = true) || 
@@ -100,7 +106,6 @@ class AppFreezerViewModel(application: Application) : AndroidViewModel(applicati
                     FilterType.BLACKLISTED -> app.isBlacklisted
                 }
             }
-            .sortedBy { it.appName }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     enum class FilterType {
